@@ -1,4 +1,3 @@
-use bevy::math::Vec3Swizzles;
 use bevy::{prelude::*, window::PrimaryWindow};
 use rand::distributions::Uniform;
 use rand::Rng;
@@ -10,6 +9,7 @@ fn main() {
         .add_system(spawn_boid)
         .add_system(move_boid_system)
         .add_system(rotate_boid_sprite_system)
+        .add_system(rotate_boid_system)
         .run();
 }
 
@@ -25,11 +25,12 @@ pub fn spawn_camera(mut commands: Commands, window_query: Query<&Window, With<Pr
 #[derive(Component)]
 pub struct Boid {
     speed: f32,
+    rotation_speed: f32,
     direction: Vec2,
 }
 
-impl Boid{
-    fn get_vec3(&self) -> Vec3{
+impl Boid {
+    fn get_vec3(&self) -> Vec3 {
         Vec3::new(self.direction.x, self.direction.y, 0.0)
     }
 }
@@ -53,6 +54,7 @@ pub fn spawn_boid(
                     },
                     Boid {
                         speed: 50.0,
+                        rotation_speed: 2.0,
                         direction: get_random_direction(),
                     },
                 ));
@@ -71,11 +73,27 @@ pub fn move_boid_system(
     }
 }
 
-pub fn rotate_boid_sprite_system(
-    mut boid_query: Query<(&mut Transform, &Boid), With<Boid>>,
-){
+pub fn rotate_boid_sprite_system(mut boid_query: Query<(&mut Transform, &Boid), With<Boid>>) {
     for (mut transform, boid) in boid_query.iter_mut() {
         transform.rotation = Quat::from_rotation_arc(Vec3::Y, boid.get_vec3());
+    }
+}
+
+pub fn rotate_boid_system(
+    mut boid_query: Query<&mut Boid>,
+    time: Res<Time>,
+    keys: Res<Input<KeyCode>>,
+) {
+    for mut boid in boid_query.iter_mut() {
+        let mut rotation_direction = 0.0;     
+        if keys.pressed(KeyCode::Left) {
+            rotation_direction = 1.0
+        } else if keys.pressed(KeyCode::Right){
+            rotation_direction = -1.0
+        }
+        
+        
+        boid.direction = rotate_vector(boid.direction, rotation_direction * boid.rotation_speed * time.delta_seconds());
     }
 }
 
@@ -85,4 +103,14 @@ fn get_random_direction() -> Vec2 {
     let random_angle: f32 = rng.sample(range);
     let random_angle = random_angle.to_radians();
     Vec2::from_angle(random_angle)
+}
+
+fn rotate_vector(vector: Vec2, angle: f32) -> Vec2 {
+    let cos_theta = angle.cos();
+    let sin_theta = angle.sin();
+
+    let x = vector.x * cos_theta - vector.y * sin_theta;
+    let y = vector.x * sin_theta + vector.y * cos_theta;
+
+    Vec2::new(x, y)
 }
