@@ -1,3 +1,4 @@
+use bevy::math::Vec3Swizzles;
 use bevy::{prelude::*, window::PrimaryWindow};
 use rand::distributions::Uniform;
 use rand::Rng;
@@ -8,6 +9,7 @@ fn main() {
         .add_startup_system(spawn_camera)
         .add_system(spawn_boid)
         .add_system(move_boid_system)
+        .add_system(rotate_boid_sprite_system)
         .run();
 }
 
@@ -24,6 +26,12 @@ pub fn spawn_camera(mut commands: Commands, window_query: Query<&Window, With<Pr
 pub struct Boid {
     speed: f32,
     direction: Vec2,
+}
+
+impl Boid{
+    fn get_vec3(&self) -> Vec3{
+        Vec3::new(self.direction.x, self.direction.y, 0.0)
+    }
 }
 
 pub fn spawn_boid(
@@ -58,8 +66,16 @@ pub fn move_boid_system(
     time: Res<Time>,
 ) {
     for (mut transform, boid) in boid_query.iter_mut() {
-        let move_direction = Vec3::new(boid.direction.x, boid.direction.y, 0.0);
+        let move_direction = boid.get_vec3();
         transform.translation += move_direction.normalize() * boid.speed * time.delta_seconds();
+    }
+}
+
+pub fn rotate_boid_sprite_system(
+    mut boid_query: Query<(&mut Transform, &Boid), With<Boid>>,
+){
+    for (mut transform, boid) in boid_query.iter_mut() {
+        transform.rotation = Quat::from_rotation_arc(Vec3::Y, boid.get_vec3());
     }
 }
 
