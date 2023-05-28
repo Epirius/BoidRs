@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 bevy = "0.10.0"
 rand = "0.8.5"
+bevy_spatial = "0.5.1"
+bevy_prototype_debug_lines = "0.10"
