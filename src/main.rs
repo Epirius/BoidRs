@@ -1,5 +1,5 @@
 use std::env;
-use std::ops::{Add, Div, Mul};
+use std::ops::{Add, Div, Mul, Neg};
 use std::time::Duration;
 
 use bevy::math::Vec3Swizzles;
@@ -10,6 +10,7 @@ use bevy_spatial::{AutomaticUpdate, SpatialAccess};
 use rand::distributions::Uniform;
 use rand::Rng;
 
+const MANUAL_ROTATION_STRENGTH: f32 = 1.0;
 const COHESION_STRENGTH: f32 = 0.2;
 
 fn main() {
@@ -69,7 +70,7 @@ pub fn spawn_boid(
                     },
                     Boid {
                         speed: 5.0,
-                        rotation_speed: 2.0,
+                        rotation_speed: 3.0,
                         direction: get_random_direction(),
                         view_distance: 50.0,
                     },
@@ -87,8 +88,7 @@ pub fn boid_cohesion_system(
 ) {
     for (mut transform, mut boid, entity) in boid_query.iter_mut() {
         let neighbors = treeaccess.within_distance(transform.translation.xy(), boid.view_distance);
-        
-        
+
         lines.line(
             transform.translation,
             boid.direction
@@ -97,8 +97,6 @@ pub fn boid_cohesion_system(
                 .add(transform.translation),
             0.01,
         );
-        
-        
 
         // if a new boid enters the view_distance then this point will snap to a new place.
         // we may therefore need to track a point for each boid and lerp towards the true average instead
@@ -109,16 +107,9 @@ pub fn boid_cohesion_system(
                 avereage_point.x - transform.translation.x,
                 avereage_point.y - transform.translation.y,
             );
-            boid.direction = boid
-                .direction
-                .lerp(
-                    vector_to_average_point,
-                    COHESION_STRENGTH * time.delta_seconds(),
-                )
-                .normalize();
-            
+            let strength = boid.rotation_speed * time.delta_seconds() * COHESION_STRENGTH;
+            rotate_boid_direction(&mut boid, vector_to_average_point, strength);
 
-            
             lines.line(
                 transform.translation,
                 vector_to_average_point
@@ -154,18 +145,30 @@ pub fn rotate_boid_manual_system(
     keys: Res<Input<KeyCode>>,
 ) {
     for mut boid in boid_query.iter_mut() {
+        let rotation_vector = if keys.pressed(KeyCode::Left){
+            boid.direction.perp()
+        } else if keys.pressed(KeyCode::Right){
+            boid.direction.perp().neg()
+        } else {
+            break;
+        };
+        let strength = boid.rotation_speed * time.delta_seconds() * MANUAL_ROTATION_STRENGTH;
+        rotate_boid_direction(&mut boid, rotation_vector, strength);
+        /* 
         let mut rotation_direction = 0.0;
         if keys.pressed(KeyCode::Left) {
             rotation_direction = 1.0
         } else if keys.pressed(KeyCode::Right) {
             rotation_direction = -1.0
         }
+        
 
         boid.direction = rotate_vector(
             boid.direction,
             rotation_direction * boid.rotation_speed * time.delta_seconds(),
         )
         .normalize();
+        */
     }
 }
 
@@ -244,4 +247,8 @@ fn draw_x(mut lines: &mut ResMut<DebugLines>, point: Vec2) {
 
     lines.line(left, right, 0.01);
     lines.line(top, bottom, 0.01);
+}
+
+fn rotate_boid_direction(boid: &mut Boid, target_vector: Vec2, strength: f32) {
+    boid.direction = boid.direction.lerp(target_vector.normalize(), strength).normalize();
 }
