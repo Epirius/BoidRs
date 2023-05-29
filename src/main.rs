@@ -13,6 +13,7 @@ use rand::Rng;
 const MANUAL_ROTATION_STRENGTH: f32 = 1.0;
 const COHESION_STRENGTH: f32 = 0.2;
 const ALINGMENT_STRENGTH: f32 = 0.2;
+const SEPARATION_STRENGTH: f32 = 0.2;
 
 fn main() {
     App::new()
@@ -31,6 +32,7 @@ fn main() {
         .add_system(avoid_walls_system)
         .add_system(boid_cohesion_system)
         .add_system(boid_alignment_system)
+        .add_system(boid_separation_system)
         .run();
 }
 
@@ -51,6 +53,7 @@ pub struct Boid {
     rotation_speed: f32,
     direction: Vec2,
     view_distance: f32,
+    separation_distance: f32,
 }
 
 pub fn spawn_boid(
@@ -71,10 +74,11 @@ pub fn spawn_boid(
                         ..default()
                     },
                     Boid {
-                        speed: 5.0,
+                        speed: 20.0,
                         rotation_speed: 3.0,
                         direction: get_random_direction(),
                         view_distance: 50.0,
+                        separation_distance: 20.0,
                     },
                 ));
             }
@@ -82,6 +86,34 @@ pub fn spawn_boid(
     }
 }
 
+pub fn boid_separation_system(
+    treeaccess: Res<NNTree>,
+    mut boid_query: Query<(&mut Transform, &mut Boid, Entity), With<Boid>>,
+    time: Res<Time>,
+){
+    for (transform, mut boid, entity) in boid_query.iter_mut() {
+        let neighbors = treeaccess.within_distance(transform.translation.xy(), boid.separation_distance);
+        if neighbors.len() <= 1 {
+            continue; // no neighbors.
+        }
+        let mut i = 0.0;
+        let mut summed_vec_to_neighbors = Vec2::ZERO;
+        for (pos, option) in neighbors {
+            if option.is_some() && option.unwrap() == entity{
+                continue; //skipping self
+            }
+
+            let vec_from_boid = Vec2::new(pos.x - transform.translation.x, pos.y - transform.translation.y);
+            summed_vec_to_neighbors = summed_vec_to_neighbors.add(vec_from_boid);
+            i += 1.0; 
+        }
+        let move_vec = summed_vec_to_neighbors.div(i).neg().normalize();
+        let strength = boid.rotation_speed * time.delta_seconds() * SEPARATION_STRENGTH;
+        rotate_boid_direction(&mut boid, move_vec, strength);
+    }
+}
+
+// TODO alignment might also align speed if boids have different max speeds etc.
 pub fn boid_alignment_system(
     treeaccess: Res<NNTree>,
     mut boid_query: Query<(&mut Transform, &mut Boid, Entity), With<Boid>>,
@@ -107,7 +139,7 @@ pub fn boid_alignment_system(
             .fold(Vec2::ZERO, |acc, vec| acc.add(*vec));
 
         if i == 0.0 {
-            break;
+            continue;
         };
         let average_direction = summed_direction.div(i);
         let strength = boid.rotation_speed * time.delta_seconds() * ALINGMENT_STRENGTH;
@@ -119,19 +151,19 @@ pub fn boid_cohesion_system(
     treeaccess: Res<NNTree>,
     mut boid_query: Query<(&mut Transform, &mut Boid, Entity), With<Boid>>,
     time: Res<Time>,
-    mut lines: ResMut<DebugLines>,
+    //mut lines: ResMut<DebugLines>,
 ) {
     for (mut transform, mut boid, entity) in boid_query.iter_mut() {
         let neighbors = treeaccess.within_distance(transform.translation.xy(), boid.view_distance);
 
-        lines.line(
+        /*lines.line(
             transform.translation,
             boid.direction
                 .mul(20.0)
                 .extend(0.0)
                 .add(transform.translation),
             0.01,
-        );
+        );*/
 
         // if a new boid enters the view_distance then this point will snap to a new place.
         // we may therefore need to track a point for each boid and lerp towards the true average instead
@@ -145,15 +177,15 @@ pub fn boid_cohesion_system(
             let strength = boid.rotation_speed * time.delta_seconds() * COHESION_STRENGTH;
             rotate_boid_direction(&mut boid, vector_to_average_point, strength);
 
-            lines.line(
+            /*lines.line(
                 transform.translation,
                 vector_to_average_point
                     .extend(0.0)
                     .add(transform.translation),
                 0.1,
-            );
+            );*/
 
-            draw_x(&mut lines, avereage_point);
+            //draw_x(&mut lines, avereage_point);
         }
     }
 }
