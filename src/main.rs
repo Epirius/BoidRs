@@ -1,6 +1,7 @@
 use std::ops::{Add, Div, Mul, Neg};
 use std::time::Duration;
 
+use bevy::core_pipeline::clear_color::ClearColorConfig;
 use bevy::math::Vec3Swizzles;
 use bevy::utils::HashMap;
 use bevy::{prelude::*, window::PrimaryWindow};
@@ -13,10 +14,11 @@ use rand::Rng;
 const MANUAL_ROTATION_STRENGTH: f32 = 1.0;
 const COHESION_STRENGTH: f32 = 0.2;
 const ALINGMENT_STRENGTH: f32 = 0.2;
-const SEPARATION_STRENGTH: f32 = 0.2;
+const SEPARATION_STRENGTH: f32 = 0.35;
 
 fn main() {
     App::new()
+    .insert_resource(ClearColor(Color::rgb(0.5, 0.5, 0.9))) 
         .add_plugins(DefaultPlugins)
         .add_plugin(DebugLinesPlugin::default())
         .add_plugin(
@@ -38,9 +40,13 @@ fn main() {
 
 pub fn spawn_camera(mut commands: Commands, window_query: Query<&Window, With<PrimaryWindow>>) {
     let window = window_query.get_single().unwrap();
-
+    
     commands.spawn(Camera2dBundle {
         transform: Transform::from_xyz(window.width() / 2.0, window.height() / 2.0, 0.0),
+        camera_2d: Camera2d{
+            //clear_color: ClearColorConfig::None,
+            clear_color: ClearColorConfig::Custom(Color::rgb_u8(64, 18, 18)),
+        },
         ..default()
     });
 }
@@ -78,7 +84,7 @@ pub fn spawn_boid(
                         rotation_speed: 3.0,
                         direction: get_random_direction(),
                         view_distance: 50.0,
-                        separation_distance: 20.0,
+                        separation_distance: 10.0,
                     },
                 ));
             }
@@ -275,7 +281,7 @@ fn calculate_average_point(mut point_list: Vec<(Vec2, Option<Entity>)>, ignore: 
     // may want to remove the filter so that everyone in the same local group hase the same average point
     // ( remember to remove the -1 when deviding at the end of the function)
 
-    if point_list.len() - 1 == 0 {
+    if point_list.len() <= 1 {
         return Vec2::ZERO;
     }
     average_point.div((point_list.len() - 1) as f32)
