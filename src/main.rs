@@ -1,8 +1,8 @@
-use std::env;
 use std::ops::{Add, Div, Mul, Neg};
 use std::time::Duration;
 
 use bevy::math::Vec3Swizzles;
+use bevy::utils::HashMap;
 use bevy::{prelude::*, window::PrimaryWindow};
 use bevy_prototype_debug_lines::{DebugLines, DebugLinesPlugin};
 use bevy_spatial::kdtree::KDTree2;
@@ -12,6 +12,7 @@ use rand::Rng;
 
 const MANUAL_ROTATION_STRENGTH: f32 = 1.0;
 const COHESION_STRENGTH: f32 = 0.2;
+const ALINGMENT_STRENGTH: f32 = 0.2;
 
 fn main() {
     App::new()
@@ -29,6 +30,7 @@ fn main() {
         .add_system(rotate_boid_manual_system)
         .add_system(avoid_walls_system)
         .add_system(boid_cohesion_system)
+        .add_system(boid_alignment_system)
         .run();
 }
 
@@ -77,6 +79,39 @@ pub fn spawn_boid(
                 ));
             }
         }
+    }
+}
+
+pub fn boid_alignment_system(
+    treeaccess: Res<NNTree>,
+    mut boid_query: Query<(&mut Transform, &mut Boid, Entity), With<Boid>>,
+    time: Res<Time>,
+) {
+    let direction_map: HashMap<Entity, Vec2> = boid_query
+        .iter()
+        .map(|(_, boid, entity)| (entity, boid.direction))
+        .collect();
+
+    for (transform, mut boid, entity) in boid_query.iter_mut() {
+        let neighbors = treeaccess.within_distance(transform.translation.xy(), boid.view_distance);
+
+        let mut i: f32 = 0.0;
+        let summed_direction = neighbors
+            .iter()
+            .filter_map(|(_, option)| *option)
+            .filter(|e| e != &entity)
+            .map(|e| {
+                i += 1.0;
+                direction_map.get(&e).unwrap()
+            })
+            .fold(Vec2::ZERO, |acc, vec| acc.add(*vec));
+
+        if i == 0.0 {
+            break;
+        };
+        let average_direction = summed_direction.div(i);
+        let strength = boid.rotation_speed * time.delta_seconds() * ALINGMENT_STRENGTH;
+        rotate_boid_direction(&mut boid, average_direction, strength);
     }
 }
 
@@ -145,30 +180,15 @@ pub fn rotate_boid_manual_system(
     keys: Res<Input<KeyCode>>,
 ) {
     for mut boid in boid_query.iter_mut() {
-        let rotation_vector = if keys.pressed(KeyCode::Left){
+        let rotation_vector = if keys.pressed(KeyCode::Left) {
             boid.direction.perp()
-        } else if keys.pressed(KeyCode::Right){
+        } else if keys.pressed(KeyCode::Right) {
             boid.direction.perp().neg()
         } else {
             break;
         };
         let strength = boid.rotation_speed * time.delta_seconds() * MANUAL_ROTATION_STRENGTH;
         rotate_boid_direction(&mut boid, rotation_vector, strength);
-        /* 
-        let mut rotation_direction = 0.0;
-        if keys.pressed(KeyCode::Left) {
-            rotation_direction = 1.0
-        } else if keys.pressed(KeyCode::Right) {
-            rotation_direction = -1.0
-        }
-        
-
-        boid.direction = rotate_vector(
-            boid.direction,
-            rotation_direction * boid.rotation_speed * time.delta_seconds(),
-        )
-        .normalize();
-        */
     }
 }
 
@@ -211,15 +231,6 @@ fn rotate_vector(vector: Vec2, angle: f32) -> Vec2 {
     Vec2::new(x, y)
 }
 
-/*
-fn calculate_average_point<T>(point_list: Vec<(Vec2, T)>, ignore: Vec2) -> Vec2 {
-    let average_point = point_list.iter()
-    .filter(|elem| elem.0 != ignore)
-    .fold(Vec2::ZERO, |acc, x| acc + x.0);
-    average_point.div(point_list.len() as f32)
-}
-*/
-
 fn calculate_average_point(mut point_list: Vec<(Vec2, Option<Entity>)>, ignore: Entity) -> Vec2 {
     let average_point = point_list
         .iter_mut()
@@ -250,5 +261,8 @@ fn draw_x(mut lines: &mut ResMut<DebugLines>, point: Vec2) {
 }
 
 fn rotate_boid_direction(boid: &mut Boid, target_vector: Vec2, strength: f32) {
-    boid.direction = boid.direction.lerp(target_vector.normalize(), strength).normalize();
+    boid.direction = boid
+        .direction
+        .lerp(target_vector.normalize(), strength)
+        .normalize();
 }
